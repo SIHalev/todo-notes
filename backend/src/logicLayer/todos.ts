@@ -6,6 +6,7 @@ import {TodoUpdate} from "../models/TodoUpdate";
 import {UpdateTodoRequest} from "../requests/UpdateTodoRequest";
 import {TodosImageAccess} from "../dataLayer/s3/todosImageAccess";
 import {TodosAccess} from "../dataLayer/dynamodb/todosAccess";
+import {isImageSafe} from "../utils/recognition";
 
 const todosAccess = new TodosAccess();
 const todosImageAccess = new TodosImageAccess();
@@ -18,7 +19,8 @@ export async function getAllTodos(userId: string): Promise<TodoItem[]> {
 export async function makeUploadUrl(userId: string, todoId: string): Promise<string> {
     const imageId = todoId; // Lets bind s3 image names with todoId's for easy management
     const uploadUrl = todosImageAccess.getImageUploadUrl(imageId);
-    const attachmentUrl = todosImageAccess.getImageAttachmentUrl(imageId);
+    // const attachmentUrl = todosImageAccess.getImageAttachmentUrl(imageId);
+    const attachmentUrl = todosImageAccess.getValidatedAttachmentUrl(imageId);
 
     await todosAccess.updateTodoAttachUrl(userId, todoId, attachmentUrl);
     return uploadUrl;
@@ -49,8 +51,18 @@ export async function updateTodo(userId: string, todoId: string, updateTodoReque
     return todosAccess.updateTodo(userId, todoId, todoUpdate);
 }
 
-
 export async function deleteTodo(userId: string, todoId: string): Promise<string> {
     // TODO: remove stored attachments
     return todosAccess.deleteTodo(userId, todoId);
+}
+
+export async function validateImage(imageId: string) {
+    const body = await todosImageAccess.getImageAttachmentBody(imageId);
+
+    const isSafe: boolean = await isImageSafe(body);
+    if (isSafe) {
+        await todosImageAccess.putValidatedAttachment(imageId, body);
+    }
+
+    await todosImageAccess.deleteImageAttachmentUrl(imageId);
 }

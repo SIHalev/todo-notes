@@ -22,6 +22,7 @@ provider:
     TODOS_TABLE: improved-todos-sihalev-${self:provider.stage}
     INDEX_USER_ID: TodosUserIdIndex
     TODOS_IMAGES_S3_BUCKET: improved-todos-images-sihalev-${self:provider.stage}
+    FILTERED_TODOS_IMAGES_S3_BUCKET: filtered-todos-images-sihalev-${self:provider.stage}
     # Sign url expiration
     SIGNED_URL_EXPIRATION: 300
 
@@ -51,15 +52,26 @@ provider:
         - s3:PutObject
         - s3:GetObject
         - s3:ListBucket # TODO remove maybe
+        - s3:DeleteObject
       Resource: arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}/*
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:ListBucket # TODO remove maybe
+      Resource: arn:aws:s3:::${self:provider.environment.FILTERED_TODOS_IMAGES_S3_BUCKET}/*
     - Effect: Allow
       Action:
         - xray:PutTraceSegments
         - xray:PutTelemetryRecords
       Resource: "*"
-      
+    - Effect: Allow
+      Action:
+        - rekognition:*
+      Resource: "*"
 
 custom:
+  topicName: filterImagesTopic-${self:provider.stage}
   documentation:
     api:
       info:
@@ -145,6 +157,19 @@ functions:
             summary: Generates a signed url for s3
             description: Returns signed url for the s3 bucket and saves the connection in the db
 
+  ValidateImage:
+    handler: src/lambda/s3/validateImage.handler
+    events:
+      - sns:
+          arn:
+            Fn::Join:
+              - ':'
+              - - arn:aws:sns
+                - Ref: AWS::Region
+                - Ref: AWS::AccountId
+                - ${self:custom.topicName}
+          topicName: ${self:custom.topicName}
+
 resources:
   Resources:
 
@@ -198,8 +223,13 @@ resources:
     # S3 bucket for storing todos item images
     AttachmentsBucket:
       Type: AWS::S3::Bucket
+      DependsOn: SNSTopicPolicy
       Properties:
         BucketName: ${self:provider.environment.TODOS_IMAGES_S3_BUCKET}
+        NotificationConfiguration:
+          TopicConfigurations:
+            - Event: s3:ObjectCreated:Put
+              Topic: !Ref ImagesTopic
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
@@ -213,6 +243,7 @@ resources:
                 - DELETE
                 - HEAD
               MaxAge: 3000
+
     BucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
@@ -226,3 +257,48 @@ resources:
               Action: 's3:GetObject'
               Resource: 'arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}/*'
         Bucket: !Ref AttachmentsBucket
+
+    FilteredAttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.FILTERED_TODOS_IMAGES_S3_BUCKET}
+
+    FilteredBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:provider.environment.FILTERED_TODOS_IMAGES_S3_BUCKET}/*'
+        Bucket: !Ref FilteredAttachmentsBucket
+
+    SNSTopicPolicy:
+      Type: AWS::SNS::TopicPolicy
+      Properties:
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS: "*"
+              Action: sns:Publish
+              Resource:
+                !Ref ImagesTopic
+              Condition:
+                ArnLike:
+                  AWS:SourceArn: arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}
+        Topics:
+          - !Ref ImagesTopic
+
+    ImagesTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: Image bucket topic
+        TopicName: ${self:custom.topicName}
+
+
