@@ -36,70 +36,12 @@ provider:
     SEND_GRID_SECRET_ID: SendGridSecret-${self:provider.stage}
     SEND_GRID_SECRET_FIELD: SendGridSecret
 
-  # TODO Revisit roles!
   iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - dynamodb:Scan # TODO remove maybe
-        - dynamodb:Query
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-        - dynamodb:Scan # TODO remove maybe
-        - dynamodb:Query # TODO remove maybe
-        - dynamodb:GetItem # TODO remove maybe
-        - dynamodb:PutItem # TODO remove maybe
-        - dynamodb:UpdateItem # TODO remove maybe
-        - dynamodb:DeleteItem # TODO remove maybe
-      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.INDEX_USER_ID}
-    - Effect: Allow
-      Action:
-        - s3:PutObject
-        - s3:GetObject
-        - s3:ListBucket # TODO remove maybe
-        - s3:DeleteObject
-      Resource: arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}/*
-    - Effect: Allow
-      Action:
-        - s3:PutObject
-        - s3:GetObject
-        - s3:ListBucket # TODO remove maybe
-      Resource: arn:aws:s3:::${self:provider.environment.FILTERED_TODOS_IMAGES_S3_BUCKET}/*
     - Effect: Allow
       Action:
         - xray:PutTraceSegments
         - xray:PutTelemetryRecords
       Resource: "*"
-    - Effect: Allow
-      Action:
-        - rekognition:*
-      Resource: "*"
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-        - dynamodb:GetItem
-      Resource: '*'
-# NOTE: Didn't have enough permissions in the sandbox aws account for email sending, so I use external service
-#       - ses:SendEmail
-#       - ses:SendRawEmail
-#      Resource: '*'
-#      Condition:
-#        StringEquals:
-#          ses:FromAddress:
-#            - "xxx@xxx.xxx"
-    - Effect: Allow
-      Action:
-        - secretsmanager:GetSecretValue
-      Resource: !Ref SendGridSecret
-    - Effect: Allow
-      Action:
-        - kms:Decrypt
-      Resource: !GetAtt KMSKey.Arn
 
 
 custom:
@@ -134,6 +76,16 @@ functions:
           documentation:
             summary: Get all todos
             description: Gets all todos for the current user
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Get
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.INDEX_USER_ID}
 
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -149,6 +101,11 @@ functions:
             description: Create a new todo item
             requestModels:
               'application/json': CreateTodoRequest
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
@@ -164,6 +121,11 @@ functions:
             description: Update a todo item
             requestModels:
               'application/json': UpdateTodoRequest
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
   DeleteTodo:
     handler: src/lambda/http/deleteTodo.handler
@@ -176,6 +138,12 @@ functions:
           documentation:
             summary: Delete todo item by its id
             description: Delete todo item by id for the current user
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
 
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
@@ -188,6 +156,16 @@ functions:
           documentation:
             summary: Generates a signed url for s3
             description: Returns signed url for the s3 bucket and saves the connection in the db
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}/*
 
   ValidateImage:
     handler: src/lambda/s3/validateImage.handler
@@ -201,14 +179,50 @@ functions:
                 - Ref: AWS::AccountId
                 - ${self:custom.topicName}
           topicName: ${self:custom.topicName}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+          - s3:DeleteObject
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_IMAGES_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource: arn:aws:s3:::${self:provider.environment.FILTERED_TODOS_IMAGES_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - rekognition:DetectModerationLabels
+        Resource: "*"
 
-  EmaiDeadlineNotification:
+  NotifyDeadline:
     handler: src/lambda/cron/emailDeadlineNotification.handler
-    #events:
+    events:
+      # NOTE!: Can't put the schedule rule, by explicit deny of the aws training account
       # Every day at 8:00 to send notifications for users with notes that have deadline today
       #- schedule: cron(0 8 * * ? *)
-      # Every 5 min for DEBUG, or manually trigger it via console
-      #- schedule: rate(5 minutes)
+
+      # For testing please uncomment this part or execute it via the console
+      #- http:
+      #    method: post
+      #    path: sendNotification
+      #    cors: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.INDEX_DUE_DATE}
+      - Effect: Allow
+        Action:
+          - secretsmanager:GetSecretValue
+        Resource: !Ref SendGridSecret
+      - Effect: Allow
+        Action:
+          - kms:Decrypt
+        Resource: !GetAtt KMSKey.Arn
 
 
 resources:

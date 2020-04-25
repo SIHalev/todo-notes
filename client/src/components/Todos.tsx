@@ -193,7 +193,7 @@ export class Todos extends React.PureComponent<TodosProps, TodosState> {
                 </Button>
               </Grid.Column>
               {todo.attachmentUrl && (
-                <Image src={todo.attachmentUrl} size="small" wrapped />
+                <Image src={todo.attachmentUrl} alt="Processing image" size="small" wrapped />
               )}
               <Grid.Column width={16}>
                 <Divider />

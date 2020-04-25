@@ -57,7 +57,6 @@ export async function updateTodo(userId: string, todoId: string, updateTodoReque
 }
 
 export async function deleteTodo(userId: string, todoId: string): Promise<string> {
-    // TODO: remove stored attachments
     return todosAccess.deleteTodo(userId, todoId);
 }
 
