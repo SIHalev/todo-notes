@@ -16,7 +16,7 @@ provider:
   name: aws
   runtime: nodejs12.x
 
-  stage: ${opt:stage, 'dev'}
+  stage: ${opt:stage, 'prd'}
   region: ${opt:region, 'us-east-1'}
 
   tracing:
