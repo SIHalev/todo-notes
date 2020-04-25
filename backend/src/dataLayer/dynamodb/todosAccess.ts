@@ -15,8 +15,31 @@ export class TodosAccess {
         private readonly docClient: DocumentClient = new XAWS.DynamoDB.DocumentClient(),
         private readonly todosTable = process.env.TODOS_TABLE,
         private readonly todosIdIndex = process.env.INDEX_USER_ID,
+        private readonly todosDeadlineIndex = process.env.INDEX_DUE_DATE,
     ) {
         // NO-OP
+    }
+
+    async getAllDeadlineTodos(dueDate: string): Promise<TodoItem[]> {
+
+        const docClient: DocumentClient = new XAWS.DynamoDB.DocumentClient();
+        const result = await docClient.query({
+            // const result = await this.docClient.query({
+            TableName: this.todosTable,
+            IndexName: this.todosDeadlineIndex,
+            KeyConditionExpression: 'dueDate=:dueDate',
+            ExpressionAttributeValues: {
+                ':dueDate': dueDate,
+            },
+            ScanIndexForward: false
+        }).promise();
+
+        const items = result.Items as TodoItem[];
+
+        logger.info(`Returning total todos for today ${items.length}`);
+        return items.filter(function (item) {
+            return item.done === false;
+        });
     }
 
     async getAllTodos(userId: string): Promise<TodoItem[]> {

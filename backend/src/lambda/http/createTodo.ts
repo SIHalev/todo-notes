@@ -2,7 +2,7 @@ import {APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult} fro
 import 'source-map-support/register'
 
 import {CreateTodoRequest} from '../../requests/CreateTodoRequest'
-import {getUserId} from "../utils";
+import {getUserEmail, getUserId} from "../utils";
 import {createLogger} from "../../utils/logger";
 import {createTodo} from "../../logicLayer/todos";
 import {TodoItem} from "../../models/TodoItem";
@@ -13,9 +13,12 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
     logger.info(`Processing event: ${event}`);
 
     const userId: string = getUserId(event);
+    const email: string = getUserEmail(event); // We can also use the email as a userId if we want it mandatory
     const parsedTodoBody: CreateTodoRequest = JSON.parse(event.body);
 
-    const newTodo: TodoItem = await createTodo(userId, parsedTodoBody);
+
+
+    const newTodo: TodoItem = await createTodo(userId, email, parsedTodoBody);
     return {
         statusCode: 201,
         headers: {

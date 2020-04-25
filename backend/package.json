@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Serverless TODO image app",
   "dependencies": {
+    "@sendgrid/helpers": "^6.4.0",
+    "@sendgrid/mail": "^6.4.0",
     "@types/axios": "^0.14.0",
     "@types/http-errors": "^1.6.1",
     "aws-xray-sdk": "^2.2.0",
@@ -29,6 +31,6 @@
     "typescript": "^3.4.1",
     "webpack": "^4.29.6"
   },
-  "author": "Ivan Mushketyk",
+  "author": "Ivan Mushketyk, Stoyan Halev",
   "license": "MIT"
 }

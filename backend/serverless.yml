@@ -1,5 +1,5 @@
 service:
-  name: serverless-improved-todo-app
+  name: sls-capstone-todo-app
 
 plugins:
   - serverless-webpack
@@ -19,12 +19,15 @@ provider:
     apiGateway: true
 
   environment:
-    TODOS_TABLE: improved-todos-sihalev-${self:provider.stage}
+    TODOS_TABLE: capstone-improved-todos-sihalev-${self:provider.stage}
     INDEX_USER_ID: TodosUserIdIndex
-    TODOS_IMAGES_S3_BUCKET: improved-todos-images-sihalev-${self:provider.stage}
-    FILTERED_TODOS_IMAGES_S3_BUCKET: filtered-todos-images-sihalev-${self:provider.stage}
+    INDEX_DUE_DATE: TodosDeadlineIndex
+    TODOS_IMAGES_S3_BUCKET: capstone-improved-todos-images-sihalev-${self:provider.stage}
+    FILTERED_TODOS_IMAGES_S3_BUCKET: capstone-filtered-todos-images-sihalev-${self:provider.stage}
     # Sign url expiration
     SIGNED_URL_EXPIRATION: 300
+    # SendGrid api key
+    SEND_GRID_API_KEY: "---"
 
   # TODO Revisit roles!
   iamRoleStatements:
@@ -69,6 +72,20 @@ provider:
       Action:
         - rekognition:*
       Resource: "*"
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:GetItem
+      Resource: '*'
+# NOTE: Didn't have enough permissions in the sandbox aws account for email sending, so I use external service
+#       - ses:SendEmail
+#       - ses:SendRawEmail
+#      Resource: '*'
+#      Condition:
+#        StringEquals:
+#          ses:FromAddress:
+#            - "xxx@xxx.xxx"
+
 
 custom:
   topicName: filterImagesTopic-${self:provider.stage}
@@ -170,6 +187,15 @@ functions:
                 - ${self:custom.topicName}
           topicName: ${self:custom.topicName}
 
+  EmaiDeadlineNotification:
+    handler: src/lambda/cron/emailDeadlineNotification.handler
+    #events:
+      # Every day at 8:00 to send notifications for users with notes that have deadline today
+      #- schedule: cron(0 8 * * ? *)
+      # Every 5 min for DEBUG, or manually trigger it via console
+      #- schedule: rate(5 minutes)
+
+
 resources:
   Resources:
 
@@ -203,6 +229,8 @@ resources:
             AttributeType: S
           - AttributeName: createdAt
             AttributeType: S
+          - AttributeName: dueDate
+            AttributeType: S
         KeySchema:
           - AttributeName: userId
             KeyType: HASH
@@ -219,6 +247,16 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
+        GlobalSecondaryIndexes: # This is only for the cron job
+          - IndexName: ${self:provider.environment.INDEX_DUE_DATE}
+            KeySchema:
+              - AttributeName: dueDate
+                KeyType: HASH
+              - AttributeName: userId
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
 
     # S3 bucket for storing todos item images
     AttachmentsBucket:
